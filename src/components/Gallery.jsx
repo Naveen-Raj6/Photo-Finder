@@ -34,14 +34,20 @@ const Gallery = () => {
     if (search) fetchImages();
   }, [search]);
 
-  // Function to handle download
-  const handleDownload = (url, id) => {
-    const link = document.createElement("a");
-    link.href = url; // Unsplash provides raw/full urls
-    link.download = `unsplash-${id}.jpg`; // suggest a file name
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (url, id) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `unsplash-${id}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Download failed", error);
+    }
   };
 
   return (
