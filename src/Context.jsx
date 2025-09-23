@@ -1,20 +1,30 @@
 import React, { createContext, useContext, useState } from "react";
 
-// create context
 const AppContext = createContext();
 
-// provider component
 export const AppProvider = ({ children }) => {
   const [search, setSearch] = useState("nature");
 
+  // only orientation & color
+  const [filters, setFilters] = useState({
+    orientation: "",
+    color: "",
+  });
+
   return (
-    <AppContext.Provider value={{ search, setSearch }}>
+    <AppContext.Provider
+      value={{
+        search,
+        setSearch,
+        filters,
+        setFilters,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
 };
 
-// custom hook for consuming context
 export const useGlobalContext = () => {
   return useContext(AppContext);
 };
