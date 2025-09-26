@@ -4,11 +4,31 @@ import DialogContent from "@mui/material/DialogContent";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
-import IconButton from "@mui/material/IconButton";
-import CloseIcon from "@mui/icons-material/Close";
+import Button from "@mui/material/Button";
 
 const ImageModal = ({ open, handleClose, image }) => {
   if (!image) return null;
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(image.urls.full);
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `unsplash-${image.id}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Download failed", error);
+    }
+  };
+
+  const handleCopyURL = () => {
+    navigator.clipboard.writeText(image.urls.full)
+      .catch((err) => console.error("Failed to copy URL", err));
+  };
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
@@ -20,13 +40,7 @@ const ImageModal = ({ open, handleClose, image }) => {
         }}
       >
         {/* Image side */}
-        <Box sx={{ flex: 2, position: "relative" }}>
-          <IconButton
-            onClick={handleClose}
-            sx={{ position: "absolute", top: 8, right: 8, color: "#fff", zIndex: 10 }}
-          >
-            <CloseIcon />
-          </IconButton>
+        <Box sx={{ flex: 2 }}>
           <img
             src={image.urls.regular}
             alt={image.alt_description || "Unsplash Image"}
@@ -63,6 +77,16 @@ const ImageModal = ({ open, handleClose, image }) => {
           ) : (
             <Typography variant="caption">No tags available</Typography>
           )}
+
+          {/* Action buttons */}
+          <Box sx={{ mt: 2, display: "flex", gap: 2 }}>
+            <Button variant="contained" color="primary" onClick={handleDownload}>
+              Download Image
+            </Button>
+            <Button variant="outlined" color="secondary" onClick={handleCopyURL}>
+              Copy Image URL
+            </Button>
+          </Box>
         </Box>
       </DialogContent>
     </Dialog>

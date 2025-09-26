@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useGlobalContext } from "../Context";
 import axios from "axios";
 import Box from "@mui/material/Box";
-import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import CardMedia from "@mui/material/CardMedia";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Skeleton from "@mui/material/Skeleton";
+import Grid from "@mui/material/Grid";
 import GetAppIcon from "@mui/icons-material/GetApp";
 import ImageModal from "./ImageModal";
 
@@ -15,9 +15,13 @@ const Gallery = () => {
   const { search, filters } = useGlobalContext();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
   const [openModal, setOpenModal] = useState(false);
+
+  const sentinelRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const handleOpenModal = (image) => {
     setSelectedImage(image);
@@ -45,91 +49,146 @@ const Gallery = () => {
     }
   };
 
-  const fetchImages = async () => {
+  const fetchImages = async (pageNum = 1, reset = false) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        query: search,
-        per_page: 12,
+      const res = await axios.get("https://api.unsplash.com/search/photos", {
+        params: {
+          query: search,
+          per_page: 12,
+          page: pageNum,
+          orientation: filters.orientation || undefined,
+          color: filters.color || undefined,
+        },
+        headers: {
+          Authorization: `Client-ID ${import.meta.env.VITE_PHOTO_KEY}`,
+        },
+        signal: controller.signal,
       });
 
-      if (filters.orientation) params.append("orientation", filters.orientation);
-      if (filters.color) params.append("color", filters.color);
+      const newResults = res.data.results || [];
 
-      const res = await axios.get(
-        `https://api.unsplash.com/search/photos?client_id=${
-          import.meta.env.VITE_PHOTO_KEY
-        }&${params.toString()}`
-      );
+      if (reset) {
+        setData(newResults);
+      } else {
+        setData((prev) => [...prev, ...newResults]);
+      }
 
-      setData(res.data.results);
+      setHasMore(newResults.length > 0);
     } catch (error) {
-      console.error(error);
+      if (axios.isCancel?.(error) || error?.name === "CanceledError") {
+        // request was cancelled
+      } else {
+        console.error("Fetch images error:", error);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
+  // Reset when search/filters change
   useEffect(() => {
-    if (search) fetchImages();
+    if (!search) {
+      setData([]);
+      setHasMore(false);
+      setPage(1);
+      return;
+    }
+    setPage(1);
+    setHasMore(true);
+    fetchImages(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filters]);
+
+  // Observe sentinel for infinite scroll
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading && hasMore) {
+          setPage((p) => p + 1);
+        }
+      },
+      { root: null, rootMargin: "200px" }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [loading, hasMore]);
+
+  // Load next page
+  useEffect(() => {
+    if (page === 1) return;
+    fetchImages(page, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
-      {loading ? (
-        <Grid container spacing={3}>
-          {Array.from(new Array(9)).map((_, i) => (
-            <Grid item xs={12} sm={6} md={4} key={i}>
-              <Skeleton variant="rectangular" height={300} />
-            </Grid>
-          ))}
-        </Grid>
-      ) : data.length > 0 ? (
-        <Grid container spacing={3}>
+      {/* Masonry-style layout using CSS columns */}
+      {data.length > 0 ? (
+        <Box
+          sx={{
+            columnCount: { xs: 1, sm: 2, md: 4 },
+            columnGap: 2,
+          }}
+        >
           {data.map((img) => (
-            <Grid item xs={12} sm={6} md={4} key={img.id}>
-              <Card
+            <Card
+              key={img.id}
+              sx={{
+                display: "inline-block",
+                width: "100%",
+                mb: 2,
+                position: "relative",
+                boxShadow: 3,
+                transition: "0.16s",
+                "&:hover": { transform: "translateY(-4px)" },
+                breakInside: "avoid",
+                WebkitColumnBreakInside: "avoid",
+                MozColumnBreakInside: "avoid",
+              }}
+            >
+              {/* Download icon */}
+              <IconButton
+                onClick={() => handleDownload(img.urls.full, img.id)}
                 sx={{
-                  position: "relative",
-                  boxShadow: 3,
-                  transition: "0.3s",
-                  "&:hover": { transform: "scale(1.03)" },
-                  overflow: "hidden",
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  backgroundColor: "#00bcd4",
+                  "&:hover": { backgroundColor: "#ff4081" },
+                  zIndex: 2,
                 }}
+                size="small"
               >
-                {/* Download icon */}
-                <IconButton
-                  onClick={() => handleDownload(img.urls.full, img.id)}
-                  sx={{
-                    position: "absolute",
-                    top: 8,
-                    right: 8,
-                    backgroundColor: "rgba(255,255,255,0.7)",
-                    "&:hover": { backgroundColor: "rgba(255,255,255,0.9)" },
-                    zIndex: 2,
-                  }}
-                  size="small"
-                >
-                  <GetAppIcon />
-                </IconButton>
+                <GetAppIcon />
+              </IconButton>
 
-                {/* Click image opens modal */}
-                <CardMedia
-                  component="img"
-                  image={img.urls.small}
-                  alt={img.alt_description || "Unsplash Image"}
-                  sx={{
-                    height: 300,
-                    width: "100%",
-                    objectFit: "cover",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => handleOpenModal(img)}
-                />
-              </Card>
-            </Grid>
+              {/* Image */}
+              <CardMedia
+                component="img"
+                image={img.urls.small}
+                alt={img.alt_description || "Unsplash Image"}
+                loading="lazy"
+                onClick={() => handleOpenModal(img)}
+                sx={{
+                  width: "100%",
+                  display: "block",
+                  cursor: "pointer",
+                }}
+              />
+            </Card>
           ))}
-        </Grid>
-      ) : (
+        </Box>
+      ) : !loading ? (
         <Typography
           variant="h6"
           align="center"
@@ -138,10 +197,39 @@ const Gallery = () => {
         >
           No images found. Try searching something else!
         </Typography>
+      ) : null}
+
+      {/* Skeletons for initial load (4 in one row) */}
+      {loading && data.length === 0 && (
+        <Grid container spacing={2} sx={{ mt: 2 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Grid item xs={12} sm={6} md={3} key={i}>
+              <Skeleton variant="rectangular" height={250} animation="wave" />
+            </Grid>
+          ))}
+        </Grid>
       )}
 
+      {/* Skeletons when fetching more pages (infinite scroll) */}
+      {loading && data.length > 0 && (
+        <Grid container spacing={2} sx={{ mt: 2 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Grid item xs={12} sm={6} md={3} key={`s-${i}`}>
+              <Skeleton variant="rectangular" height={250} animation="wave" />
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Sentinel for infinite scroll */}
+      <div ref={sentinelRef} />
+
       {/* Image preview modal */}
-      <ImageModal open={openModal} handleClose={handleCloseModal} image={selectedImage} />
+      <ImageModal
+        open={openModal}
+        handleClose={handleCloseModal}
+        image={selectedImage}
+      />
     </Box>
   );
 };
