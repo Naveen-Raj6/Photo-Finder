@@ -24,7 +24,7 @@ const SearchForm = () => {
   return (
     <Box sx={{ textAlign: "center", mt: 5 }}>
       <Typography variant="h4" gutterBottom color="primary">
-        Lumin Image Search
+        Shutterly Image Search
       </Typography>
       <Box
         component="form"
